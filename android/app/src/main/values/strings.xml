@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Myraa</string>
-    <string name="tile_label">Myraa</string>
-    <string name="shortcut_talk">Talk to Myraa</string>
-    <string name="a11y_label">Myraa app control</string>
-    <string name="a11y_description">Lets Myraa open apps, read the screen, look at a picture of it (Android 11+), tap, type and scroll when you ask her to. It never reads, photographs or touches banking or payment apps, the lock screen or password fields, and it asks for a spoken yes before sending, posting, calling or deleting.</string>
-</resources>
