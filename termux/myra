@@ -1,0 +1,163 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# myra - control MYRA's brain in Termux. Run `myra help`.
+set -uo pipefail
+
+DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+JDIR="$HOME/.myra"
+CONF="$JDIR/config.json"
+LOG="$JDIR/brain.log"
+PIDF="$JDIR/brain.pid"
+REPO="Dynamox-DEV677/myra-phone"
+export PATH="$HOME/.local/bin:$PATH"
+ORANGE=$'\033[38;5;208m'; RED=$'\033[31m'; DIM=$'\033[2m'; OFF=$'\033[0m'
+mkdir -p "$JDIR"
+
+conf() { node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));let v=c;for(const k of process.argv[2].split("."))v=v?.[k];process.stdout.write(v==null?"":String(v))' "$CONF" "$1" 2>/dev/null; }
+setconf() { node -e 'const fs=require("fs"),f=process.argv[1];const c=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):{};c[process.argv[2]]=JSON.parse(process.argv[3]);fs.writeFileSync(f,JSON.stringify(c,null,2),{mode:0o600})' "$CONF" "$1" "$2"; }
+running() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
+api() { # api METHOD PATH [json]
+  curl -s --max-time "${TIMEOUT:-5}" -X "$1" -H "x-myra-token: $(conf token)" -H 'content-type: application/json' ${3:+--data "$3"} "http://127.0.0.1:$(conf port)$2"
+}
+
+cmd_setup() {
+  node "$DIR/termux/setup.mjs" || return 1
+  agy plugin install "$JDIR/plugin" >/dev/null 2>&1 || agy plugin install "$JDIR/plugin" || { echo "${RED}agy couldn't install the MYRA plugin.${OFF}"; return 1; }
+  echo "  MYRA plugin installed in agy."
+}
+
+cmd_start() {
+  if running; then echo "The brain is already running."; return 0; fi
+  command -v agy >/dev/null || { echo "${RED}agy isn't installed.${OFF} Run the installer again."; return 1; }
+  termux-wake-lock 2>/dev/null || true
+  nohup node "$DIR/brain/brain.mjs" >> "$LOG" 2>&1 &
+  echo $! > "$PIDF"
+  sleep 2
+  if running; then echo "${ORANGE}MYRA brain started.${OFF} ${DIM}(logs: myra logs)${OFF}"; else echo "${RED}It stopped straight away.${OFF} Last lines of the log:"; tail -n 15 "$LOG"; return 1; fi
+}
+
+cmd_stop() {
+  if running; then
+    kill "$(cat "$PIDF")" 2>/dev/null; sleep 1
+    pkill -f 'agy --agent myra-phone' 2>/dev/null || true
+    echo "MYRA brain stopped."
+  else echo "The brain isn't running."; fi
+  rm -f "$PIDF"
+  termux-wake-unlock 2>/dev/null || true
+}
+
+cmd_status() {
+  if running; then
+    local h; h="$(api GET /health)"
+    echo "${ORANGE}Brain: running${OFF}  $h"
+  else
+    echo "Brain: ${RED}stopped${OFF} (start it with: myra start)"
+  fi
+  if [ -n "$(conf pc.host)" ]; then echo "PC: paired with $(conf pc.host):$(conf pc.port)"; else echo "PC: not paired (optional)"; fi
+  echo "agy: $(command -v agy || echo not installed)"
+}
+
+cmd_token() {
+  local t; t="$(conf token)"
+  [ -n "$t" ] || { echo "No token yet. Run: myra start"; return 1; }
+  echo "$t"
+  if command -v termux-clipboard-set >/dev/null && termux-clipboard-set "$t" 2>/dev/null; then echo "${DIM}(copied - paste it into the MYRA app)${OFF}"; fi
+}
+
+cmd_pair() {
+  local hp="${1:-}" tok="${2:-}"
+  if [ -z "$hp" ] || [ -z "$tok" ]; then echo "Usage: myra pair <PC-address>:<port> <token>   (the PC bridge shows this line)"; return 1; fi
+  local host="${hp%%:*}" port="${hp##*:}"; [ "$port" = "$hp" ] && port=8766
+  if curl -s --max-time 4 "http://$host:$port/health/$tok" | grep -q '"ok":true'; then
+    echo "${ORANGE}Found the PC.${OFF}"
+  else
+    echo "${RED}Couldn't reach the PC at $host:$port.${OFF} Saved anyway - MYRA will look for it on the Wi-Fi."
+    echo "  Check: is the bridge window open on the PC, is the phone on the same Wi-Fi, and did Windows ask to allow Node.js on private networks?"
+  fi
+  setconf pc "{\"host\":\"$host\",\"port\":$port,\"token\":\"$tok\"}"
+  running && { cmd_stop >/dev/null; cmd_start; }
+}
+
+cmd_unpair() { setconf pc null; echo "PC unpaired."; running && { cmd_stop >/dev/null; cmd_start; }; }
+
+cmd_app() {
+  echo "Finding the latest MYRA app on GitHub..."
+  local url
+  url="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -o '"browser_download_url": *"[^"]*\.apk"' | head -n1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+  [ -n "$url" ] || { echo "${RED}No app release found yet.${OFF} Check https://github.com/$REPO/releases"; return 1; }
+  mkdir -p "$DIR/app"
+  curl -fL --progress-bar -o "$DIR/app/myra.apk" "$url" || return 1
+  echo "Opening the installer. If Android asks, allow Termux to install apps."
+  termux-open "$DIR/app/myra.apk"
+}
+
+cmd_update() {
+  git -C "$DIR" pull --ff-only || return 1
+  cmd_setup
+  running && { cmd_stop >/dev/null; cmd_start; }
+  echo "Updated. For a newer app too, run: myra app"
+}
+
+cmd_ask() {
+  [ $# -gt 0 ] || { echo "Usage: myra ask \"what's the weather in Chennai?\""; return 1; }
+  running || cmd_start || return 1
+  local q; q="$(node -e 'process.stdout.write(JSON.stringify({text:process.argv.slice(1).join(" ")}))' "$@")"
+  TIMEOUT=1300 api POST /ask "$q" | node -e '
+    let b="";process.stdin.on("data",d=>b+=d).on("end",()=>{for(const l of b.split("\n")){if(!l.trim())continue;const e=JSON.parse(l);
+      if(e.type==="tool")console.log("\x1b[2m  ("+e.name+")\x1b[0m");else if(e.type==="reply")console.log(e.text);else if(e.type==="error")console.log("\x1b[31m"+e.message+"\x1b[0m")}})'
+}
+
+cmd_model() {
+  if [ -z "${1:-}" ]; then echo "Model: $(conf model)"; echo "Choose from: agy models"; return; fi
+  setconf model "\"$1\""; echo "Model set to $1."; running && { cmd_stop >/dev/null; cmd_start; }
+}
+
+cmd_name() {
+  [ -n "${1:-}" ] || { echo "MYRA calls you: $(cat "$JDIR/owner" 2>/dev/null), addressed as \"$(cat "$JDIR/address" 2>/dev/null || echo sir)\". Change: myra name <name> [address]"; return; }
+  printf '%s\n' "$1" > "$JDIR/owner"; [ -n "${2:-}" ] && printf '%s\n' "$2" > "$JDIR/address"
+  cmd_setup >/dev/null && echo "Done." && { running && { cmd_stop >/dev/null; cmd_start; }; true; }
+}
+
+cmd_panic() { running || { echo "The brain isn't running, so nothing is active."; return 0; }; api POST /stop >/dev/null && echo "${RED}EMERGENCY STOP.${OFF} MYRA refuses every tool until: myra resume"; }
+cmd_resume() { running || { echo "The brain isn't running."; return 1; }; api POST /resume >/dev/null && echo "${ORANGE}Resumed.${OFF}"; }
+
+cmd_backup() {
+  if [ -z "${1:-}" ]; then
+    local p; p="$(conf fallback.provider)"
+    if [ -n "$p" ]; then echo "Backup brain: $p ($(conf fallback.model)) fallbackFirst=$(conf fallbackFirst)"; else echo "No backup brain. Set one: myra backup <groq|openai|anthropic|gemini|ollama|custom> <api-key> [model] [base-url]"; fi
+    echo "Turn it off: myra backup off"; return
+  fi
+  if [ "$1" = "off" ]; then setconf fallback null; echo "Backup brain off."; running && { cmd_stop >/dev/null; cmd_start; }; return; fi
+  case "$1" in groq|openai|anthropic|gemini|ollama|custom) ;; *) echo "Provider must be groq, openai, anthropic, gemini, ollama or custom."; return 1 ;; esac
+  node -e 'const [p,k,m,u]=process.argv.slice(1);const o={provider:p};if(k&&k!=="-")o.apiKey=k;if(m&&m!=="-")o.model=m;if(u)o.baseUrl=u;process.stdout.write(JSON.stringify(o))' "$1" "${2:-}" "${3:-}" "${4:-}" > "$JDIR/.fb.json"
+  setconf fallback "$(cat "$JDIR/.fb.json")"; rm -f "$JDIR/.fb.json"
+  echo "Backup brain set to $1."; running && { cmd_stop >/dev/null; cmd_start; }
+}
+
+cmd_logs() { tail -n "${1:-40}" -f "$LOG"; }
+cmd_new() { api POST /reset >/dev/null && echo "New conversation."; }
+
+cmd_help() {
+  cat <<EOF
+${ORANGE}myra${OFF} - the brain of MYRA on this phone
+
+  myra start | stop | status     run the brain (the app can also start it)
+  myra token                     the token to paste into the app
+  myra app                       download and install the latest app
+  myra pair <ip>:<port> <token>  let MYRA use your PC (the PC bridge shows this line)
+  myra unpair                    forget the PC
+  myra ask "question"            ask from the terminal
+  myra new                       start a new conversation
+  myra model [name]              show or change the Gemini model (list: agy models)
+  myra name <name> [address]     what MYRA calls you, and how it addresses you (default: sir)
+  myra panic | resume            emergency stop: MYRA refuses every tool until resume
+  myra backup [provider key]     backup brain (groq, openai, gemini, ollama, custom) when agy is down
+  myra logs                      watch the brain's log
+  myra update                    get the newest version from GitHub
+EOF
+}
+
+case "${1:-help}" in
+  setup|start|stop|status|token|pair|unpair|app|update|ask|model|name|logs|new|panic|resume|backup|help) c="$1"; shift; "cmd_$c" "$@" ;;
+  restart) shift; cmd_stop; cmd_start ;;
+  *) echo "Unknown command: $1"; cmd_help; exit 1 ;;
+esac
