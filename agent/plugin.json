@@ -1,0 +1,11 @@
+{
+  "name": "myra-phone",
+  "displayName": "MYRA (phone)",
+  "version": "1.0.0",
+  "description": "MYRA as a voice assistant on an Android phone: web search, phone controls through Termux, and the paired PC through the MYRA PC bridge.",
+  "author": {
+    "name": "Kairo Industries"
+  },
+  "license": "MIT",
+  "keywords": ["myra", "voice", "android", "termux"]
+}
