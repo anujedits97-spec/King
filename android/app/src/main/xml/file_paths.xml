@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Any file the File manager shows may be opened or shared, one file at a time, only when you tap Open or Share. -->
+    <root-path name="root" path="." />
+</paths>
