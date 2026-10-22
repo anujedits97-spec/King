@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets MYRA write project files into Documents/MYRA-Projects, a folder VSCodroid can open (the user switches it on once). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+    <!-- Android 8 and 9 only (Android 11 and newer use the All files access switch above): lets the File manager screen browse the phone. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Lets MYRA start its brain in Termux (you grant it in the app, and Termux must allow it). -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Optional: MYRA says who is calling and answers or declines when you tell him to. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Native phone tools (replace Termux:API): read and send texts, place calls. Each is asked in Settings and every send or call needs a spoken yes. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Optional: MYRA tells you what is on your calendar in the next hours (you switch it on in Settings). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Lets "close WhatsApp" ask Android to stop an app that is in the background. -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- Optional second way into the app lock: the phone's own fingerprint or face screen. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Optional: MYRA takes one photo when you ask ("ye kya hai, camera se dekho"). Off until you switch it on in Settings. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Automations: alarms and timers, brightness (the user allows it once), scheduled tasks that survive a reboot. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Android 14+: lets the always-on service hold the camera too, so a photo works with the app in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Optional: MYRA watches the screen live and comments on it (you tap Start on Android's dialog each time). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <queries>
+        <package android:name="com.termux" />
+        <!-- "Live screen" opens Chrome Remote Desktop when it's installed. -->
+        <package android:name="com.google.chromeremotedesktop" />
+        <!-- So MYRA can open the camera for "photo kheecho" (launch_camera). -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <!-- So MYRA can find any installed app by its name and open it. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".MyraApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Myra">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- The pairing QR code on the laptop: myra://pair?u=…&k=…&s=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="myra" android:host="pair" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity>
+
+        <activity
+            android:name=".ShotActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Myra" />
+
+        <!-- No screen: wakes MYRA up and closes. Used by the shortcut, the tile and assist gestures. -->
+        <activity
+            android:name=".TriggerActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Myra.Invisible">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- The File manager screen (Settings, File manager): browse, open, share, rename, copy, move and trash files. -->
+        <activity
+            android:name=".FileManagerActivity"
+            android:exported="false"
+            android:label="Files"
+            android:parentActivityName=".MainActivity" />
+
+        <!-- Lets the File manager hand a file to another app (open or share) without exposing the whole phone. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Where the keys and accounts for email, images, Facebook, Instagram and YouTube are typed. -->
+        <activity
+            android:name=".MemoriesActivity"
+            android:exported="false"
+            android:label="Yaadein"
+            android:parentActivityName=".MainActivity" />
+        <!-- Journal and Study (home screen buttons): diary, study notes and a focus timer. -->
+        <activity
+            android:name=".JournalActivity"
+            android:exported="false"
+            android:label="Journal"
+            android:windowSoftInputMode="adjustResize"
+            android:parentActivityName=".MainActivity" />
+        <!-- Scan (home screen button): photos of paper, read by MYRA, copied as text, or made into a PDF. -->
+        <activity
+            android:name=".ScanActivity"
+            android:exported="false"
+            android:label="Scan"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".SosActivity"
+            android:exported="false"
+            android:label="SOS"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".PassphraseActivity"
+            android:exported="false"
+            android:label="Voice passphrase"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".PersonalActivity"
+            android:exported="false"
+            android:label="Personal"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".PermissionsActivity"
+            android:exported="false"
+            android:label="Permissions"
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".KeysActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:parentActivityName=".MainActivity"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Shows nothing. Opens for one moment so the camera may run, takes one photo and closes. -->
+        <activity
+            android:name=".CameraCaptureActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Myra.Transparent" />
+
+        <!-- Shows Android's screen-share dialog. Nothing on screen of its own. -->
+        <activity
+            android:name=".ScreenShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Myra.Invisible" />
+
+        <!-- Live screen: sends frames to MYRA every few seconds and speaks the commentary. -->
+        <service
+            android:name=".LiveScreenService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name=".MyraService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
+
+        <!-- Lets MYRA use other apps directly (read the screen, tap, type, scroll). You switch it on in Accessibility settings. -->
+        <service
+            android:name=".MyraAccess"
+            android:exported="true"
+            android:label="@string/a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Optional: reads new notifications out loud. Off until you switch it on in Settings and give Notification access. -->
+        <service
+            android:name=".AnnounceService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Optional auto-reply. Does nothing until you give Notification access AND switch it on in Settings. -->
+        <service
+            android:name=".AutoReplyService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Fires scheduled tasks and puts them back after a reboot. -->
+        <receiver
+            android:name=".TaskReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".MyraTile"
+            android:exported="true"
+            android:icon="@drawable/ic_orb"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
